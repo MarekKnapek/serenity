@@ -8,7 +8,37 @@
 #include <LibCrypto/Cipher/AES.h>
 #include <LibCrypto/Cipher/AESTables.h>
 
+
+#if (defined AK_COMPILER_GCC || defined AK_COMPILER_CLANG) && (ARCH(X86_64) || ARCH(I386))
+#define AES_x86_COMPILE_TIME_TEST 1
+#else
+#define AES_x86_COMPILE_TIME_TEST 0
+#endif
+
+
+#if AES_x86_COMPILE_TIME_TEST
+#include <emmintrin.h>
+#include <wmmintrin.h>
+#endif
+
+
 namespace Crypto::Cipher {
+
+#if AES_x86_COMPILE_TIME_TEST
+namespace
+{
+    static bool g_cpuid_inited = false;
+    static bool aes_x86_run_time_test()
+    {
+        if(!g_cpuid_inited)
+        {
+            __builtin_cpu_init();
+            g_cpuid_inited = true;
+        }
+        return __builtin_cpu_supports("sse2") && __builtin_cpu_supports("aes");
+    }
+}
+#endif
 
 template<typename T>
 constexpr u32 get_key(T pt)
@@ -198,91 +228,140 @@ void AESCipherKey::expand_decrypt_key(ReadonlyBytes user_key, size_t bits)
 
 void AESCipher::encrypt_block(AESCipherBlock const& in, AESCipherBlock& out)
 {
-    u32 s0, s1, s2, s3, t0, t1, t2, t3;
-    size_t r { 0 };
+#if AES_x86_COMPILE_TIME_TEST
+    if(aes_x86_run_time_test())
+    {
+        __m128i v;
 
-    auto const& dec_key = key();
-    auto const* round_keys = dec_key.round_keys();
+        auto const& dec_key = key();
+        auto const* round_keys = dec_key.round_keys();
+        auto const& in_bytes = in.bytes();
+        auto out_bytes = out.bytes();
 
-    s0 = get_key(in.bytes().offset_pointer(0)) ^ round_keys[0];
-    s1 = get_key(in.bytes().offset_pointer(4)) ^ round_keys[1];
-    s2 = get_key(in.bytes().offset_pointer(8)) ^ round_keys[2];
-    s3 = get_key(in.bytes().offset_pointer(12)) ^ round_keys[3];
+        v = _mm_loadu_si128(reinterpret_cast<__m128i const*>(in_bytes.data()));
+        _mm_xor_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[ 0 * 4])));
+        _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[ 1 * 4])));
+        _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[ 2 * 4])));
+        _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[ 3 * 4])));
+        _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[ 4 * 4])));
+        _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[ 5 * 4])));
+        _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[ 6 * 4])));
+        _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[ 7 * 4])));
+        _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[ 8 * 4])));
+        _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[ 9 * 4])));
+        if(dec_key.rounds() == 10)
+        {
+            _mm_aesenclast_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[10 * 4])));
+        }
+        else if(dec_key.rounds() == 12)
+        {
+            _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[10 * 4])));
+            _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[11 * 4])));
+            _mm_aesenclast_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[12 * 4])));
+        }
+        else if(dec_key.rounds() == 14)
+        {
+            _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[10 * 4])));
+            _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[11 * 4])));
+            _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[12 * 4])));
+            _mm_aesenc_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[13 * 4])));
+            _mm_aesenclast_si128(v, _mm_loadu_si128(reinterpret_cast<__m128i const*>(&round_keys[14 * 4])));
+        }
+        else
+        {
+            /* assert(false); */
+        }
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(out_bytes.bytes()), v);
+    }
+    else
+#endif
+    {
+        u32 s0, s1, s2, s3, t0, t1, t2, t3;
+        size_t r { 0 };
 
-    r = dec_key.rounds() >> 1;
+        auto const& dec_key = key();
+        auto const* round_keys = dec_key.round_keys();
 
-    // apply the first |r - 1| rounds
-    for (;;) {
+        s0 = get_key(in.bytes().offset_pointer(0)) ^ round_keys[0];
+        s1 = get_key(in.bytes().offset_pointer(4)) ^ round_keys[1];
+        s2 = get_key(in.bytes().offset_pointer(8)) ^ round_keys[2];
+        s3 = get_key(in.bytes().offset_pointer(12)) ^ round_keys[3];
+
+        r = dec_key.rounds() >> 1;
+
+        // apply the first |r - 1| rounds
+        for (;;) {
+            // clang-format off
+            t0 = AESTables::Encode0[(s0 >> 24)       ] ^
+                 AESTables::Encode1[(s1 >> 16) & 0xff] ^
+                 AESTables::Encode2[(s2 >>  8) & 0xff] ^
+                 AESTables::Encode3[(s3      ) & 0xff] ^ round_keys[4];
+            t1 = AESTables::Encode0[(s1 >> 24)       ] ^
+                 AESTables::Encode1[(s2 >> 16) & 0xff] ^
+                 AESTables::Encode2[(s3 >>  8) & 0xff] ^
+                 AESTables::Encode3[(s0      ) & 0xff] ^ round_keys[5];
+            t2 = AESTables::Encode0[(s2 >> 24)       ] ^
+                 AESTables::Encode1[(s3 >> 16) & 0xff] ^
+                 AESTables::Encode2[(s0 >>  8) & 0xff] ^
+                 AESTables::Encode3[(s1      ) & 0xff] ^ round_keys[6];
+            t3 = AESTables::Encode0[(s3 >> 24)       ] ^
+                 AESTables::Encode1[(s0 >> 16) & 0xff] ^
+                 AESTables::Encode2[(s1 >>  8) & 0xff] ^
+                 AESTables::Encode3[(s2      ) & 0xff] ^ round_keys[7];
+            // clang-format on
+
+            round_keys += 8;
+            --r;
+            if (r == 0)
+                break;
+
+            // clang-format off
+            s0 = AESTables::Encode0[(t0 >> 24)       ] ^
+                 AESTables::Encode1[(t1 >> 16) & 0xff] ^
+                 AESTables::Encode2[(t2 >>  8) & 0xff] ^
+                 AESTables::Encode3[(t3      ) & 0xff] ^ round_keys[0];
+            s1 = AESTables::Encode0[(t1 >> 24)       ] ^
+                 AESTables::Encode1[(t2 >> 16) & 0xff] ^
+                 AESTables::Encode2[(t3 >>  8) & 0xff] ^
+                 AESTables::Encode3[(t0      ) & 0xff] ^ round_keys[1];
+            s2 = AESTables::Encode0[(t2 >> 24)       ] ^
+                 AESTables::Encode1[(t3 >> 16) & 0xff] ^
+                 AESTables::Encode2[(t0 >>  8) & 0xff] ^
+                 AESTables::Encode3[(t1      ) & 0xff] ^ round_keys[2];
+            s3 = AESTables::Encode0[(t3 >> 24)       ] ^
+                 AESTables::Encode1[(t0 >> 16) & 0xff] ^
+                 AESTables::Encode2[(t1 >>  8) & 0xff] ^
+                 AESTables::Encode3[(t2      ) & 0xff] ^ round_keys[3];
+            // clang-format on
+        }
+
+        // apply the last round and put the encrypted data into out
         // clang-format off
-        t0 = AESTables::Encode0[(s0 >> 24)       ] ^
-             AESTables::Encode1[(s1 >> 16) & 0xff] ^
-             AESTables::Encode2[(s2 >>  8) & 0xff] ^
-             AESTables::Encode3[(s3      ) & 0xff] ^ round_keys[4];
-        t1 = AESTables::Encode0[(s1 >> 24)       ] ^
-             AESTables::Encode1[(s2 >> 16) & 0xff] ^
-             AESTables::Encode2[(s3 >>  8) & 0xff] ^
-             AESTables::Encode3[(s0      ) & 0xff] ^ round_keys[5];
-        t2 = AESTables::Encode0[(s2 >> 24)       ] ^
-             AESTables::Encode1[(s3 >> 16) & 0xff] ^
-             AESTables::Encode2[(s0 >>  8) & 0xff] ^
-             AESTables::Encode3[(s1      ) & 0xff] ^ round_keys[6];
-        t3 = AESTables::Encode0[(s3 >> 24)       ] ^
-             AESTables::Encode1[(s0 >> 16) & 0xff] ^
-             AESTables::Encode2[(s1 >>  8) & 0xff] ^
-             AESTables::Encode3[(s2      ) & 0xff] ^ round_keys[7];
-        // clang-format on
+        s0 = (AESTables::Encode2[(t0 >> 24)       ] & 0xff000000) ^
+             (AESTables::Encode3[(t1 >> 16) & 0xff] & 0x00ff0000) ^
+             (AESTables::Encode0[(t2 >>  8) & 0xff] & 0x0000ff00) ^
+             (AESTables::Encode1[(t3      ) & 0xff] & 0x000000ff) ^ round_keys[0];
+        out.put(0, s0);
 
-        round_keys += 8;
-        --r;
-        if (r == 0)
-            break;
+        s1 = (AESTables::Encode2[(t1 >> 24)       ] & 0xff000000) ^
+             (AESTables::Encode3[(t2 >> 16) & 0xff] & 0x00ff0000) ^
+             (AESTables::Encode0[(t3 >>  8) & 0xff] & 0x0000ff00) ^
+             (AESTables::Encode1[(t0      ) & 0xff] & 0x000000ff) ^ round_keys[1];
+        out.put(4, s1);
 
-        // clang-format off
-        s0 = AESTables::Encode0[(t0 >> 24)       ] ^
-             AESTables::Encode1[(t1 >> 16) & 0xff] ^
-             AESTables::Encode2[(t2 >>  8) & 0xff] ^
-             AESTables::Encode3[(t3      ) & 0xff] ^ round_keys[0];
-        s1 = AESTables::Encode0[(t1 >> 24)       ] ^
-             AESTables::Encode1[(t2 >> 16) & 0xff] ^
-             AESTables::Encode2[(t3 >>  8) & 0xff] ^
-             AESTables::Encode3[(t0      ) & 0xff] ^ round_keys[1];
-        s2 = AESTables::Encode0[(t2 >> 24)       ] ^
-             AESTables::Encode1[(t3 >> 16) & 0xff] ^
-             AESTables::Encode2[(t0 >>  8) & 0xff] ^
-             AESTables::Encode3[(t1      ) & 0xff] ^ round_keys[2];
-        s3 = AESTables::Encode0[(t3 >> 24)       ] ^
-             AESTables::Encode1[(t0 >> 16) & 0xff] ^
-             AESTables::Encode2[(t1 >>  8) & 0xff] ^
-             AESTables::Encode3[(t2      ) & 0xff] ^ round_keys[3];
+        s2 = (AESTables::Encode2[(t2 >> 24)       ] & 0xff000000) ^
+             (AESTables::Encode3[(t3 >> 16) & 0xff] & 0x00ff0000) ^
+             (AESTables::Encode0[(t0 >>  8) & 0xff] & 0x0000ff00) ^
+             (AESTables::Encode1[(t1      ) & 0xff] & 0x000000ff) ^ round_keys[2];
+        out.put(8, s2);
+
+        s3 = (AESTables::Encode2[(t3 >> 24)       ] & 0xff000000) ^
+             (AESTables::Encode3[(t0 >> 16) & 0xff] & 0x00ff0000) ^
+             (AESTables::Encode0[(t1 >>  8) & 0xff] & 0x0000ff00) ^
+             (AESTables::Encode1[(t2      ) & 0xff] & 0x000000ff) ^ round_keys[3];
+        out.put(12, s3);
         // clang-format on
     }
-
-    // apply the last round and put the encrypted data into out
-    // clang-format off
-    s0 = (AESTables::Encode2[(t0 >> 24)       ] & 0xff000000) ^
-         (AESTables::Encode3[(t1 >> 16) & 0xff] & 0x00ff0000) ^
-         (AESTables::Encode0[(t2 >>  8) & 0xff] & 0x0000ff00) ^
-         (AESTables::Encode1[(t3      ) & 0xff] & 0x000000ff) ^ round_keys[0];
-    out.put(0, s0);
-
-    s1 = (AESTables::Encode2[(t1 >> 24)       ] & 0xff000000) ^
-         (AESTables::Encode3[(t2 >> 16) & 0xff] & 0x00ff0000) ^
-         (AESTables::Encode0[(t3 >>  8) & 0xff] & 0x0000ff00) ^
-         (AESTables::Encode1[(t0      ) & 0xff] & 0x000000ff) ^ round_keys[1];
-    out.put(4, s1);
-
-    s2 = (AESTables::Encode2[(t2 >> 24)       ] & 0xff000000) ^
-         (AESTables::Encode3[(t3 >> 16) & 0xff] & 0x00ff0000) ^
-         (AESTables::Encode0[(t0 >>  8) & 0xff] & 0x0000ff00) ^
-         (AESTables::Encode1[(t1      ) & 0xff] & 0x000000ff) ^ round_keys[2];
-    out.put(8, s2);
-
-    s3 = (AESTables::Encode2[(t3 >> 24)       ] & 0xff000000) ^
-         (AESTables::Encode3[(t0 >> 16) & 0xff] & 0x00ff0000) ^
-         (AESTables::Encode0[(t1 >>  8) & 0xff] & 0x0000ff00) ^
-         (AESTables::Encode1[(t2      ) & 0xff] & 0x000000ff) ^ round_keys[3];
-    out.put(12, s3);
-    // clang-format on
 }
 
 void AESCipher::decrypt_block(AESCipherBlock const& in, AESCipherBlock& out)
