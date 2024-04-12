@@ -9,7 +9,7 @@
 #include <LibCrypto/Cipher/AESTables.h>
 
 
-#if (defined AK_COMPILER_GCC || defined AK_COMPILER_CLANG) && (ARCH(X86_64) || ARCH(I386))
+#if defined AK_COMPILER_GCC && (ARCH(X86_64) || ARCH(I386)) && !defined KERNEL
 #define AES_x86_COMPILE_TIME_TEST 1
 #else
 #define AES_x86_COMPILE_TIME_TEST 0
@@ -226,7 +226,7 @@ void AESCipherKey::expand_decrypt_key(ReadonlyBytes user_key, size_t bits)
     }
 }
 
-void AESCipher::encrypt_block(AESCipherBlock const& in, AESCipherBlock& out)
+void __attribute__((__target__("sse2,aes"))) AESCipher::encrypt_block(AESCipherBlock const& in, AESCipherBlock& out)
 {
 #if AES_x86_COMPILE_TIME_TEST
     if(aes_x86_run_time_test())
