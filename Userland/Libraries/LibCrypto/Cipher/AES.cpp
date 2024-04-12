@@ -271,7 +271,7 @@ void AESCipher::encrypt_block(AESCipherBlock const& in, AESCipherBlock& out)
         {
             /* assert(false); */
         }
-        _mm_storeu_si128(reinterpret_cast<__m128i*>(out_bytes), v);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(out_bytes.data()), v);
     }
     else
 #endif
