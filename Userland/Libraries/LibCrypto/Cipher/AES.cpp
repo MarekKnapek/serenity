@@ -11,8 +11,10 @@
 
 #if defined AK_COMPILER_GCC && (ARCH(X86_64) || ARCH(I386)) && !defined KERNEL
 #define AES_x86_COMPILE_TIME_TEST 1
+#define attribute_target(x) __attribute__((__target__(x)))
 #else
 #define AES_x86_COMPILE_TIME_TEST 0
+#define attribute_target(x)
 #endif
 
 
@@ -226,7 +228,7 @@ void AESCipherKey::expand_decrypt_key(ReadonlyBytes user_key, size_t bits)
     }
 }
 
-void __attribute__((__target__("sse2,aes"))) AESCipher::encrypt_block(AESCipherBlock const& in, AESCipherBlock& out)
+void attribute_target("sse2,aes") AESCipher::encrypt_block(AESCipherBlock const& in, AESCipherBlock& out)
 {
 #if AES_x86_COMPILE_TIME_TEST
     if(aes_x86_run_time_test())
