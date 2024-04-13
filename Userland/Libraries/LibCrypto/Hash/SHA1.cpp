@@ -7,8 +7,181 @@
 
 #include <AK/Endian.h>
 #include <AK/Memory.h>
+#include <AK/Platform.h>
 #include <AK/Types.h>
 #include <LibCrypto/Hash/SHA1.h>
+
+namespace
+{
+    #if defined __GNUC__ && defined __GNUC_MINOR__
+    #define gnuc_is_at_least(major, minor) (((__GNUC__) > (major)) || (((__GNUC__) == (major)) && ((__GNUC_MINOR__) >= (minor))))
+    #define gnuc_attribute_target(x) __attribute__((__target__(x)))
+    #else
+    #define gnuc_is_at_least(major, minor) 0
+    #define gnuc_attribute_target(x)
+    #endif
+
+    #define crypto_hash_sha1_x86_compiletime_test (ARCH(I386) || ARCH(X86_64)) && gnuc_is_at_least(11, 1)
+
+    #if crypto_hash_sha1_x86_compiletime_test
+
+    #include <emmintrin.h> /* SSE2 _mm_add_epi32 _mm_loadu_si128 _mm_set_epi32 _mm_set_epi64x _mm_setzero_si128 _mm_shuffle_epi32 _mm_storeu_si128 _mm_xor_si128 */
+    #include <tmmintrin.h> /* SSSE3 _mm_shuffle_epi8 */
+    #include <smmintrin.h> /* SSE4.1 _mm_extract_epi32 */
+    #include <immintrin.h> /* SHA _mm_sha1msg1_epu32 _mm_sha1msg2_epu32 _mm_sha1nexte_epu32 _mm_sha1rnds4_epu32 */
+
+    static bool crypto_hash_sha1_x86_inited = false;
+
+    static inline bool crypto_hash_sha1_x86_runtime_test(void)
+    {
+        if(!crypto_hash_sha1_x86_inited)
+        {
+            __builtin_cpu_init();
+            crypto_hash_sha1_x86_inited = true;
+        }
+        return
+            __builtin_cpu_supports("sse2") &&
+            __builtin_cpu_supports("sse3") &&
+            __builtin_cpu_supports("sse4.1") &&
+            __builtin_cpu_supports("sha");
+    }
+
+    static inline void gnuc_attribute_target("sse2,sse3,sse4.1,sha") crypto_hash_sha1_x86_transform(u32* const state, u8 const* const data)
+    {
+        #define sha1_x86_reverse_32_c ((0x0 << (3 * 2)) | (0x1 << (2 * 2)) | (0x2 << (1 * 2)) | (0x3 << (0 * 2)))
+
+	    __m128i reverse_8;
+	    __m128i abcdx;
+	    __m128i e;
+	    __m128i old_abcd;
+	    __m128i old_e;
+	    __m128i msg_0;
+	    __m128i abcdy;
+	    __m128i msg_1;
+	    __m128i msg_2;
+	    __m128i msg_3;
+
+        VERIFY(state);
+        VERIFY(data);
+        VERIFY(crypto_hash_sha1_x86_runtime_test());
+
+        reverse_8 = _mm_set_epi64x(0x0001020304050607ull, 0x08090a0b0c0d0e0full);
+        abcdx = _mm_loadu_si128(((__m128i const*)(state)));
+        abcdx = _mm_shuffle_epi32(abcdx, sha1_x86_reverse_32_c);
+        e = _mm_set_epi32(*((int const*)(&state[4])), 0, 0, 0);
+
+        old_abcd = abcdx;
+        old_e = e;
+        msg_0 = _mm_loadu_si128(((__m128i const*)(&data[0 * 16])));
+        msg_0 = _mm_shuffle_epi8(msg_0, reverse_8);
+        e = _mm_add_epi32(e, msg_0);
+        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 0);
+        msg_1 = _mm_loadu_si128(((__m128i const*)(&data[1 * 16])));
+        msg_1 = _mm_shuffle_epi8(msg_1, reverse_8);
+        e = _mm_sha1nexte_epu32(abcdx, msg_1);
+        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 0);
+        msg_2 = _mm_loadu_si128(((__m128i const*)(&data[2 * 16])));
+        msg_2 = _mm_shuffle_epi8(msg_2, reverse_8);
+        e = _mm_sha1nexte_epu32(abcdy, msg_2);
+        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 0);
+        msg_3 = _mm_loadu_si128(((__m128i const*)(&data[3 * 16])));
+        msg_3 = _mm_shuffle_epi8(msg_3, reverse_8);
+        e = _mm_sha1nexte_epu32(abcdx, msg_3);
+        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 0);
+        msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
+        msg_0 = _mm_xor_si128(msg_0, msg_2);
+        msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
+        e = _mm_sha1nexte_epu32(abcdy, msg_0);
+        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 0);
+        msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
+        msg_1 = _mm_xor_si128(msg_1, msg_3);
+        msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
+        e = _mm_sha1nexte_epu32(abcdx, msg_1);
+        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 1);
+        msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
+        msg_2 = _mm_xor_si128(msg_2, msg_0);
+        msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
+        e = _mm_sha1nexte_epu32(abcdy, msg_2);
+        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 1);
+        msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
+        msg_3 = _mm_xor_si128(msg_3, msg_1);
+        msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
+        e = _mm_sha1nexte_epu32(abcdx, msg_3);
+        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 1);
+        msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
+        msg_0 = _mm_xor_si128(msg_0, msg_2);
+        msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
+        e = _mm_sha1nexte_epu32(abcdy, msg_0);
+        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 1);
+        msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
+        msg_1 = _mm_xor_si128(msg_1, msg_3);
+        msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
+        e = _mm_sha1nexte_epu32(abcdx, msg_1);
+        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 1);
+        msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
+        msg_2 = _mm_xor_si128(msg_2, msg_0);
+        msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
+        e = _mm_sha1nexte_epu32(abcdy, msg_2);
+        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 2);
+        msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
+        msg_3 = _mm_xor_si128(msg_3, msg_1);
+        msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
+        e = _mm_sha1nexte_epu32(abcdx, msg_3);
+        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 2);
+        msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
+        msg_0 = _mm_xor_si128(msg_0, msg_2);
+        msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
+        e = _mm_sha1nexte_epu32(abcdy, msg_0);
+        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 2);
+        msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
+        msg_1 = _mm_xor_si128(msg_1, msg_3);
+        msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
+        e = _mm_sha1nexte_epu32(abcdx, msg_1);
+        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 2);
+        msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
+        msg_2 = _mm_xor_si128(msg_2, msg_0);
+        msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
+        e = _mm_sha1nexte_epu32(abcdy, msg_2);
+        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 2);
+        msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
+        msg_3 = _mm_xor_si128(msg_3, msg_1);
+        msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
+        e = _mm_sha1nexte_epu32(abcdx, msg_3);
+        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 3);
+        msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
+        msg_0 = _mm_xor_si128(msg_0, msg_2);
+        msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
+        e = _mm_sha1nexte_epu32(abcdy, msg_0);
+        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 3);
+        msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
+        msg_1 = _mm_xor_si128(msg_1, msg_3);
+        msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
+        e = _mm_sha1nexte_epu32(abcdx, msg_1);
+        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 3);
+        msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
+        msg_2 = _mm_xor_si128(msg_2, msg_0);
+        msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
+        e = _mm_sha1nexte_epu32(abcdy, msg_2);
+        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 3);
+        msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
+        msg_3 = _mm_xor_si128(msg_3, msg_1);
+        msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
+        e = _mm_sha1nexte_epu32(abcdx, msg_3);
+        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 3);
+        msg_0 = _mm_setzero_si128();
+        e = _mm_sha1nexte_epu32(abcdy, msg_0);
+        abcdx = _mm_add_epi32(abcdx, old_abcd);
+        e = _mm_add_epi32(e, old_e);
+
+        abcdx = _mm_shuffle_epi32(abcdx, sha1_x86_reverse_32_c);
+        _mm_storeu_si128(((__m128i*)(&state[0])), abcdx);
+        *((int*)(&state[4])) = _mm_extract_epi32(e, 3);
+
+        #undef sha1_x86_reverse_32_c
+    }
+
+    #endif
+}
 
 namespace Crypto::Hash {
 
@@ -76,7 +249,16 @@ void SHA1::update(u8 const* message, size_t length)
         length -= copy_bytes;
         m_data_length += copy_bytes;
         if (m_data_length == BlockSize) {
-            transform(m_data_buffer);
+            #if crypto_hash_sha1_x86_compiletime_test
+            if(crypto_hash_sha1_x86_runtime_test())
+            {
+                crypto_hash_sha1_x86_transform(&m_state[0], m_data_buffer);
+            }
+            else
+            #endif
+            {
+                transform(m_data_buffer);
+            }
             m_bit_length += BlockSize * 8;
             m_data_length = 0;
         }
