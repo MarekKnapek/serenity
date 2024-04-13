@@ -76,7 +76,6 @@ private:
     u32 m_state[5];
 
     constexpr static auto FinalBlockDataSize = BlockSize - 8;
-    constexpr static auto Rounds = 80;
 };
 
 }

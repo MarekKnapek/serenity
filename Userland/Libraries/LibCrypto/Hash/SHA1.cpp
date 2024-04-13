@@ -11,177 +11,13 @@
 #include <AK/Types.h>
 #include <LibCrypto/Hash/SHA1.h>
 
-namespace
-{
-    #if defined __GNUC__ && defined __GNUC_MINOR__
-    #define gnuc_is_at_least(major, minor) (((__GNUC__) > (major)) || (((__GNUC__) == (major)) && ((__GNUC_MINOR__) >= (minor))))
-    #define gnuc_attribute_target(x) __attribute__((__target__(x)))
-    #else
-    #define gnuc_is_at_least(major, minor) 0
-    #define gnuc_attribute_target(x)
-    #endif
+#if ARCH(I386) || ARCH(X86_64)
+#include <emmintrin.h> // SSE2 _mm_add_epi32 _mm_loadu_si128 _mm_set_epi32 _mm_set_epi64x _mm_setzero_si128 _mm_shuffle_epi32 _mm_storeu_si128 _mm_xor_si128
+#include <tmmintrin.h> // SSSE3 _mm_shuffle_epi8
+#include <smmintrin.h> // SSE4.1 _mm_extract_epi32
+#include <immintrin.h> // SHA _mm_sha1msg1_epu32 _mm_sha1msg2_epu32 _mm_sha1nexte_epu32 _mm_sha1rnds4_epu32
+#endif
 
-    #define crypto_hash_sha1_x86_compiletime_test (ARCH(I386) || ARCH(X86_64)) && gnuc_is_at_least(11, 1)
-
-    #if crypto_hash_sha1_x86_compiletime_test
-
-    #include <emmintrin.h> /* SSE2 _mm_add_epi32 _mm_loadu_si128 _mm_set_epi32 _mm_set_epi64x _mm_setzero_si128 _mm_shuffle_epi32 _mm_storeu_si128 _mm_xor_si128 */
-    #include <tmmintrin.h> /* SSSE3 _mm_shuffle_epi8 */
-    #include <smmintrin.h> /* SSE4.1 _mm_extract_epi32 */
-    #include <immintrin.h> /* SHA _mm_sha1msg1_epu32 _mm_sha1msg2_epu32 _mm_sha1nexte_epu32 _mm_sha1rnds4_epu32 */
-
-    static bool crypto_hash_sha1_x86_inited = false;
-
-    static inline bool crypto_hash_sha1_x86_runtime_test(void)
-    {
-        if(!crypto_hash_sha1_x86_inited)
-        {
-            __builtin_cpu_init();
-            crypto_hash_sha1_x86_inited = true;
-        }
-        return
-            __builtin_cpu_supports("sse2") &&
-            __builtin_cpu_supports("sse3") &&
-            __builtin_cpu_supports("sse4.1") &&
-            __builtin_cpu_supports("sha");
-    }
-
-    static inline void gnuc_attribute_target("sse2,sse3,sse4.1,sha") crypto_hash_sha1_x86_transform(u32* const state, u8 const* const data)
-    {
-        #define sha1_x86_reverse_32_c ((0x0 << (3 * 2)) | (0x1 << (2 * 2)) | (0x2 << (1 * 2)) | (0x3 << (0 * 2)))
-
-	    __m128i reverse_8;
-	    __m128i abcdx;
-	    __m128i e;
-	    __m128i old_abcd;
-	    __m128i old_e;
-	    __m128i msg_0;
-	    __m128i abcdy;
-	    __m128i msg_1;
-	    __m128i msg_2;
-	    __m128i msg_3;
-
-        VERIFY(state);
-        VERIFY(data);
-        VERIFY(crypto_hash_sha1_x86_runtime_test());
-
-        reverse_8 = _mm_set_epi64x(0x0001020304050607ull, 0x08090a0b0c0d0e0full);
-        abcdx = _mm_loadu_si128(((__m128i const*)(state)));
-        abcdx = _mm_shuffle_epi32(abcdx, sha1_x86_reverse_32_c);
-        e = _mm_set_epi32(*((int const*)(&state[4])), 0, 0, 0);
-
-        old_abcd = abcdx;
-        old_e = e;
-        msg_0 = _mm_loadu_si128(((__m128i const*)(&data[0 * 16])));
-        msg_0 = _mm_shuffle_epi8(msg_0, reverse_8);
-        e = _mm_add_epi32(e, msg_0);
-        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 0);
-        msg_1 = _mm_loadu_si128(((__m128i const*)(&data[1 * 16])));
-        msg_1 = _mm_shuffle_epi8(msg_1, reverse_8);
-        e = _mm_sha1nexte_epu32(abcdx, msg_1);
-        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 0);
-        msg_2 = _mm_loadu_si128(((__m128i const*)(&data[2 * 16])));
-        msg_2 = _mm_shuffle_epi8(msg_2, reverse_8);
-        e = _mm_sha1nexte_epu32(abcdy, msg_2);
-        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 0);
-        msg_3 = _mm_loadu_si128(((__m128i const*)(&data[3 * 16])));
-        msg_3 = _mm_shuffle_epi8(msg_3, reverse_8);
-        e = _mm_sha1nexte_epu32(abcdx, msg_3);
-        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 0);
-        msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
-        msg_0 = _mm_xor_si128(msg_0, msg_2);
-        msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
-        e = _mm_sha1nexte_epu32(abcdy, msg_0);
-        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 0);
-        msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
-        msg_1 = _mm_xor_si128(msg_1, msg_3);
-        msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
-        e = _mm_sha1nexte_epu32(abcdx, msg_1);
-        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 1);
-        msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
-        msg_2 = _mm_xor_si128(msg_2, msg_0);
-        msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
-        e = _mm_sha1nexte_epu32(abcdy, msg_2);
-        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 1);
-        msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
-        msg_3 = _mm_xor_si128(msg_3, msg_1);
-        msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
-        e = _mm_sha1nexte_epu32(abcdx, msg_3);
-        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 1);
-        msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
-        msg_0 = _mm_xor_si128(msg_0, msg_2);
-        msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
-        e = _mm_sha1nexte_epu32(abcdy, msg_0);
-        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 1);
-        msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
-        msg_1 = _mm_xor_si128(msg_1, msg_3);
-        msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
-        e = _mm_sha1nexte_epu32(abcdx, msg_1);
-        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 1);
-        msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
-        msg_2 = _mm_xor_si128(msg_2, msg_0);
-        msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
-        e = _mm_sha1nexte_epu32(abcdy, msg_2);
-        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 2);
-        msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
-        msg_3 = _mm_xor_si128(msg_3, msg_1);
-        msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
-        e = _mm_sha1nexte_epu32(abcdx, msg_3);
-        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 2);
-        msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
-        msg_0 = _mm_xor_si128(msg_0, msg_2);
-        msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
-        e = _mm_sha1nexte_epu32(abcdy, msg_0);
-        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 2);
-        msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
-        msg_1 = _mm_xor_si128(msg_1, msg_3);
-        msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
-        e = _mm_sha1nexte_epu32(abcdx, msg_1);
-        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 2);
-        msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
-        msg_2 = _mm_xor_si128(msg_2, msg_0);
-        msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
-        e = _mm_sha1nexte_epu32(abcdy, msg_2);
-        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 2);
-        msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
-        msg_3 = _mm_xor_si128(msg_3, msg_1);
-        msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
-        e = _mm_sha1nexte_epu32(abcdx, msg_3);
-        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 3);
-        msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
-        msg_0 = _mm_xor_si128(msg_0, msg_2);
-        msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
-        e = _mm_sha1nexte_epu32(abcdy, msg_0);
-        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 3);
-        msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
-        msg_1 = _mm_xor_si128(msg_1, msg_3);
-        msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
-        e = _mm_sha1nexte_epu32(abcdx, msg_1);
-        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 3);
-        msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
-        msg_2 = _mm_xor_si128(msg_2, msg_0);
-        msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
-        e = _mm_sha1nexte_epu32(abcdy, msg_2);
-        abcdy = _mm_sha1rnds4_epu32(abcdx, e, 3);
-        msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
-        msg_3 = _mm_xor_si128(msg_3, msg_1);
-        msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
-        e = _mm_sha1nexte_epu32(abcdx, msg_3);
-        abcdx = _mm_sha1rnds4_epu32(abcdy, e, 3);
-        msg_0 = _mm_setzero_si128();
-        e = _mm_sha1nexte_epu32(abcdy, msg_0);
-        abcdx = _mm_add_epi32(abcdx, old_abcd);
-        e = _mm_add_epi32(e, old_e);
-
-        abcdx = _mm_shuffle_epi32(abcdx, sha1_x86_reverse_32_c);
-        _mm_storeu_si128(((__m128i*)(&state[0])), abcdx);
-        *((int*)(&state[4])) = _mm_extract_epi32(e, 3);
-
-        #undef sha1_x86_reverse_32_c
-    }
-
-    #endif
-}
 
 namespace Crypto::Hash {
 
@@ -190,8 +26,10 @@ static constexpr auto ROTATE_LEFT(u32 value, size_t bits)
     return (value << bits) | (value >> (32 - bits));
 }
 
-inline void SHA1::transform(u8 const* data)
+__attribute__((target("default"))) static void transform_impl(u32* state, u8 const* data)
 {
+    constexpr static auto Rounds = 80;
+
     u32 blocks[80];
     for (size_t i = 0; i < 16; ++i)
         blocks[i] = AK::convert_between_host_and_network_endian(((u32 const*)data)[i]);
@@ -200,7 +38,7 @@ inline void SHA1::transform(u8 const* data)
     for (size_t i = 16; i < Rounds; ++i)
         blocks[i] = ROTATE_LEFT(blocks[i - 3] ^ blocks[i - 8] ^ blocks[i - 14] ^ blocks[i - 16], 1);
 
-    auto a = m_state[0], b = m_state[1], c = m_state[2], d = m_state[3], e = m_state[4];
+    auto a = state[0], b = state[1], c = state[2], d = state[3], e = state[4];
     u32 f, k;
 
     for (size_t i = 0; i < Rounds; ++i) {
@@ -225,11 +63,11 @@ inline void SHA1::transform(u8 const* data)
         a = temp;
     }
 
-    m_state[0] += a;
-    m_state[1] += b;
-    m_state[2] += c;
-    m_state[3] += d;
-    m_state[4] += e;
+    state[0] += a;
+    state[1] += b;
+    state[2] += c;
+    state[3] += d;
+    state[4] += e;
 
     // "security" measures, as if SHA1 is secure
     a = 0;
@@ -238,6 +76,188 @@ inline void SHA1::transform(u8 const* data)
     d = 0;
     e = 0;
     secure_zero(blocks, 16 * sizeof(u32));
+}
+
+#if ARCH(I386) || ARCH(X86_64)
+__attribute__((target("sse2,ssse3,sse4.1,sha"))) static void transform_impl(u32* state, u8 const* data)
+{
+    __m128i reverse_8;
+    __m128i abcd_1;
+    __m128i e;
+    __m128i old_abcd;
+    __m128i old_e;
+    __m128i msg_0;
+    __m128i abcd_2;
+    __m128i msg_1;
+    __m128i msg_2;
+    __m128i msg_3;
+
+    VERIFY(state);
+    VERIFY(data);
+
+    // Set up constant for reversing input buffer.
+    reverse_8 = _mm_set_epi64x(0x0001020304050607ull, 0x08090a0b0c0d0e0full);
+    // Load state into working registers.
+    abcd_1 = _mm_loadu_si128(reinterpret_cast<__m128i const*>(&state[0]));
+    abcd_1 = _mm_shuffle_epi32(abcd_1, 0x1b);
+    e = _mm_set_epi32(*reinterpret_cast<int const*>(&state[4]), 0, 0, 0);
+    // Here could start `for' or `while' loop in case we processed more than one block at once.
+    // Save old state.
+    old_abcd = abcd_1;
+    old_e = e;
+    // Load four 32bit integers into working registers.
+    msg_0 = _mm_loadu_si128(reinterpret_cast<__m128i const*>(&data[0 * 16]));
+    msg_0 = _mm_shuffle_epi8(msg_0, reverse_8);
+    // Four rounds (0-3) of the SHA-1 algorithm.
+    e = _mm_add_epi32(e, msg_0);
+    abcd_2 = _mm_sha1rnds4_epu32(abcd_1, e, 0);
+    // Load four 32bit integers into working registers.
+    msg_1 = _mm_loadu_si128(reinterpret_cast<__m128i const*>(&data[1 * 16]));
+    msg_1 = _mm_shuffle_epi8(msg_1, reverse_8);
+    // Four rounds (4-7) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_1, msg_1);
+    abcd_1 = _mm_sha1rnds4_epu32(abcd_2, e, 0);
+    // Load four 32bit integers into working registers.
+    msg_2 = _mm_loadu_si128(reinterpret_cast<__m128i const*>(&data[2 * 16]));
+    msg_2 = _mm_shuffle_epi8(msg_2, reverse_8);
+    // Four rounds (8-11) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_2, msg_2);
+    abcd_2 = _mm_sha1rnds4_epu32(abcd_1, e, 0);
+    // Load four 32bit integers into working registers.
+    msg_3 = _mm_loadu_si128(reinterpret_cast<__m128i const*>(&data[3 * 16]));
+    msg_3 = _mm_shuffle_epi8(msg_3, reverse_8);
+    // Four rounds (12-15) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_1, msg_3);
+    abcd_1 = _mm_sha1rnds4_epu32(abcd_2, e, 0);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
+    msg_0 = _mm_xor_si128(msg_0, msg_2);
+    msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
+    // Four rounds (16-19) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_2, msg_0);
+    abcd_2 = _mm_sha1rnds4_epu32(abcd_1, e, 0);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
+    msg_1 = _mm_xor_si128(msg_1, msg_3);
+    msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
+    // Four rounds (20-23) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_1, msg_1);
+    abcd_1 = _mm_sha1rnds4_epu32(abcd_2, e, 1);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
+    msg_2 = _mm_xor_si128(msg_2, msg_0);
+    msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
+    // Four rounds (24-27) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_2, msg_2);
+    abcd_2 = _mm_sha1rnds4_epu32(abcd_1, e, 1);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
+    msg_3 = _mm_xor_si128(msg_3, msg_1);
+    msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
+    // Four rounds (28-31) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_1, msg_3);
+    abcd_1 = _mm_sha1rnds4_epu32(abcd_2, e, 1);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
+    msg_0 = _mm_xor_si128(msg_0, msg_2);
+    msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
+    // Four rounds (32-35) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_2, msg_0);
+    abcd_2 = _mm_sha1rnds4_epu32(abcd_1, e, 1);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
+    msg_1 = _mm_xor_si128(msg_1, msg_3);
+    msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
+    // Four rounds (36-39) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_1, msg_1);
+    abcd_1 = _mm_sha1rnds4_epu32(abcd_2, e, 1);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
+    msg_2 = _mm_xor_si128(msg_2, msg_0);
+    msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
+    // Four rounds (40-43) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_2, msg_2);
+    abcd_2 = _mm_sha1rnds4_epu32(abcd_1, e, 2);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
+    msg_3 = _mm_xor_si128(msg_3, msg_1);
+    msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
+    // Four rounds (44-47) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_1, msg_3);
+    abcd_1 = _mm_sha1rnds4_epu32(abcd_2, e, 2);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
+    msg_0 = _mm_xor_si128(msg_0, msg_2);
+    msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
+    // Four rounds (48-51) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_2, msg_0);
+    abcd_2 = _mm_sha1rnds4_epu32(abcd_1, e, 2);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
+    msg_1 = _mm_xor_si128(msg_1, msg_3);
+    msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
+    // Four rounds (52-55) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_1, msg_1);
+    abcd_1 = _mm_sha1rnds4_epu32(abcd_2, e, 2);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
+    msg_2 = _mm_xor_si128(msg_2, msg_0);
+    msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
+    // Four rounds (56-59) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_2, msg_2);
+    abcd_2 = _mm_sha1rnds4_epu32(abcd_1, e, 2);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
+    msg_3 = _mm_xor_si128(msg_3, msg_1);
+    msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
+    // Four rounds (60-63) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_1, msg_3);
+    abcd_1 = _mm_sha1rnds4_epu32(abcd_2, e, 3);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_0 = _mm_sha1msg1_epu32(msg_0, msg_1);
+    msg_0 = _mm_xor_si128(msg_0, msg_2);
+    msg_0 = _mm_sha1msg2_epu32(msg_0, msg_3);
+    // Four rounds (64-67) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_2, msg_0);
+    abcd_2 = _mm_sha1rnds4_epu32(abcd_1, e, 3);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_1 = _mm_sha1msg1_epu32(msg_1, msg_2);
+    msg_1 = _mm_xor_si128(msg_1, msg_3);
+    msg_1 = _mm_sha1msg2_epu32(msg_1, msg_0);
+    // Four rounds (68-71) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_1, msg_1);
+    abcd_1 = _mm_sha1rnds4_epu32(abcd_2, e, 3);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_2 = _mm_sha1msg1_epu32(msg_2, msg_3);
+    msg_2 = _mm_xor_si128(msg_2, msg_0);
+    msg_2 = _mm_sha1msg2_epu32(msg_2, msg_1);
+    // Four rounds (72-77) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_2, msg_2);
+    abcd_2 = _mm_sha1rnds4_epu32(abcd_1, e, 3);
+    // Generate next input, aka preprocessing, described in NIST FIPS PUB 180-4 section 6.1.2.1.
+    msg_3 = _mm_sha1msg1_epu32(msg_3, msg_0);
+    msg_3 = _mm_xor_si128(msg_3, msg_1);
+    msg_3 = _mm_sha1msg2_epu32(msg_3, msg_2);
+    // Four rounds (76-79) of the SHA-1 algorithm.
+    e = _mm_sha1nexte_epu32(abcd_1, msg_3);
+    abcd_1 = _mm_sha1rnds4_epu32(abcd_2, e, 3);
+    // Finish computation of the last `e' value.
+    msg_0 = _mm_setzero_si128();
+    e = _mm_sha1nexte_epu32(abcd_2, msg_0);
+    // Sum current working registers with saved state from before.
+    abcd_1 = _mm_add_epi32(abcd_1, old_abcd);
+    e = _mm_add_epi32(e, old_e);
+    // Here could end `for' or `while' loop in case we processed more than one block at once.
+    // Save working registers into state.
+    abcd_1 = _mm_shuffle_epi32(abcd_1, 0x1b);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(&state[0]), abcd_1);
+    *reinterpret_cast<int*>(&state[4]) = _mm_extract_epi32(e, 3);
+}
+#endif
+
+inline void SHA1::transform(u8 const* data)
+{
+    transform_impl(m_state, data);
 }
 
 void SHA1::update(u8 const* message, size_t length)
@@ -249,16 +269,7 @@ void SHA1::update(u8 const* message, size_t length)
         length -= copy_bytes;
         m_data_length += copy_bytes;
         if (m_data_length == BlockSize) {
-            #if crypto_hash_sha1_x86_compiletime_test
-            if(crypto_hash_sha1_x86_runtime_test())
-            {
-                crypto_hash_sha1_x86_transform(&m_state[0], m_data_buffer);
-            }
-            else
-            #endif
-            {
-                transform(m_data_buffer);
-            }
+            transform(m_data_buffer);
             m_bit_length += BlockSize * 8;
             m_data_length = 0;
         }
