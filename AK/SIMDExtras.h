@@ -101,6 +101,21 @@ ALWAYS_INLINE static int maskcount(i32x4 mask)
 
 // Load / Store
 
+template<typename VectorType, typename ItemType = Detail::Decay<decltype(declval<VectorType>()[0])>>
+ALWAYS_INLINE static VectorType load4u(void const* a)
+{
+    VectorType v;
+    __builtin_memcpy(&v, a, sizeof(VectorType));
+    return v;
+}
+
+template<typename VectorType, typename ItemType = Detail::Decay<decltype(declval<VectorType>()[0])>>
+ALWAYS_INLINE static void store4u(void* a, VectorType const& v)
+{
+    // FIXME: Does this generate the right instructions?
+    __builtin_memcpy(a, &v, sizeof(VectorType));
+}
+
 ALWAYS_INLINE static f32x4 load4(float const* a, float const* b, float const* c, float const* d)
 {
     return f32x4 { *a, *b, *c, *d };
@@ -192,6 +207,35 @@ ALWAYS_INLINE static T shuffle(T a, T control)
         a[control[15] & 0xf],
     };
 }
+
+template<OneOf<i32x4, u32x4> T>
+ALWAYS_INLINE static T shuffle(T a, T control)
+{
+    return T {
+        a[control[0]],
+        a[control[1]],
+        a[control[2]],
+        a[control[3]],
+    };
+}
+
+template<OneOf<i32x4, u32x4> T>
+ALWAYS_INLINE static T item_reverse(T a)
+{
+    return T { a[3], a[2], a[1], a[0] };
+}
+
+template<OneOf<i32x4, u32x4> T>
+ALWAYS_INLINE static T byte_reverse(T a)
+{
+    return bit_cast<T>(
+        __builtin_shufflevector(
+            bit_cast<c8x16>(a),
+            bit_cast<c8x16>(a),
+            15, 14, 13, 12, 11, 10, 9, 8,
+            7, 6, 5, 4, 3, 2, 1, 0));
+}
+
 }
 
 #pragma GCC diagnostic pop
