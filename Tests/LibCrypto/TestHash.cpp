@@ -199,6 +199,19 @@ TEST_CASE(test_SHA1_hash_successive_updates)
     EXPECT(memcmp(result, digest.data, Crypto::Hash::SHA1::digest_size()) == 0);
 }
 
+TEST_CASE(test_SHA1_hash_successive_updates_1m)
+{
+    u8 result[] {
+        0x45, 0x40, 0x27, 0xd6, 0x4e, 0x3b, 0x85, 0x57, 0x35, 0x55, 0x2d, 0x42, 0x23, 0x0e, 0xea, 0x1c, 0xbd, 0x64, 0x5f, 0xa0
+    };
+    auto hasher = Crypto::Hash::SHA1 {};
+    for (int i = 0; i != 1024; ++i) {
+        hasher.update("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"sv);
+    }
+    auto digest = hasher.digest();
+    EXPECT(memcmp(result, digest.data, Crypto::Hash::SHA1::digest_size()) == 0);
+}
+
 TEST_CASE(test_SHA1_hash_split_into_blocks)
 {
     u8 result[] {
@@ -238,6 +251,19 @@ TEST_CASE(test_SHA256_hash_split_into_blocks)
         0x1b, 0x90, 0x74, 0xf9, 0x9b, 0xf3, 0x56, 0x20, 0xd3, 0xf6, 0xbf, 0x7d, 0x72, 0x53, 0xb3, 0x3c, 0xd1, 0x1b, 0x7d, 0xd8, 0xa9, 0xa0, 0x4e, 0x55, 0xf5, 0x72, 0x43, 0x94, 0xaf, 0x27, 0x6c, 0x5c
     };
     auto digest = Crypto::Hash::SHA256::hash("0123456789012345678901234567890123456789012345678901234567890123abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd"sv);
+    EXPECT(memcmp(result, digest.data, Crypto::Hash::SHA256::digest_size()) == 0);
+}
+
+TEST_CASE(test_SHA256_hash_successive_updates_1m)
+{
+    u8 result[] {
+        0x9b, 0xc1, 0xb2, 0xa2, 0x88, 0xb2, 0x6a, 0xf7, 0x25, 0x7a, 0x36, 0x27, 0x7a, 0xe3, 0x81, 0x6a, 0x7d, 0x4f, 0x16, 0xe8, 0x9c, 0x1e, 0x7e, 0x77, 0xd0, 0xa5, 0xc4, 0x8b, 0xad, 0x62, 0xb3, 0x60
+    };
+    auto hasher = Crypto::Hash::SHA256 {};
+    for (int i = 0; i != 1024; ++i) {
+        hasher.update("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"sv);
+    }
+    auto digest = hasher.digest();
     EXPECT(memcmp(result, digest.data, Crypto::Hash::SHA256::digest_size()) == 0);
 }
 
