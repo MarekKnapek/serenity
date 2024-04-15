@@ -93,62 +93,46 @@ SHA1_ATTRIBUTE_TARGET_DEFAULT static void transform_impl(u32 (&state)[5], u8 con
 
 #if (ARCH(I386) || ARCH(X86_64)) && defined(AK_COMPILER_GCC)
 
-using AK::SIMD::i32x4;
-
 SHA1_ATTRIBUTE_TARGET_X86 static void transform_impl(u32 (&state)[5], u8 const (&data)[64])
 {
-    // Set up constant for reversing input buffer.
-    i32x4 abcd[2];
-    i32x4 msgs[4];
-    // Load state into working registers.
+    using AK::SIMD::i32x4;
+
+    i32x4 abcd[2] {};
+    i32x4 msgs[4] {};
 
     abcd[0] = AK::SIMD::load4u<i32x4>(&state[0]);
     abcd[0] = AK::SIMD::item_reverse(abcd[0]);
-    i32x4 e { (i32)state[4], 0, 0, 0 };
-    // Here could start `for' or `while' loop in case we processed more than one block at once.
-    // Save old state.
-    auto old_abcd = abcd[0];
-    auto old_e = e;
-    // Load four 32bit integers into working registers.
-    msgs[0] = AK::SIMD::load4u<i32x4>(&data[0 * 16]);
-    msgs[0] = AK::SIMD::byte_reverse(msgs[0]);
-    // Four rounds (0-3) of the SHA-1 algorithm.
-    e += msgs[0];
-    abcd[1] = __builtin_ia32_sha1rnds4(abcd[0], e, 0);
+    i32x4 e { 0, 0, 0, static_cast<i32>(state[4]) };
 
-    UNROLL_LOOP
-    for (int i = 1; i < 4; ++i) {
-        msgs[i] = AK::SIMD::load4u<i32x4>(&data[(i + 1) * 16]);
-        msgs[i] = AK::SIMD::byte_reverse(msgs[i]);
-
-        e = __builtin_ia32_sha1nexte(abcd[i % 2], msgs[i]);
-        abcd[(i + 1) % 2] = __builtin_ia32_sha1rnds4(abcd[(i + 1) % 2], e, 0);
-    }
-
-#    define ROUND(i)                                                               \
-        UNROLL_LOOP                                                                \
-        for (int j = 0; j < 4; ++j) {                                              \
-            msgs[j] = __builtin_ia32_sha1msg1(msgs[j], msgs[(j + 1) % 4]);         \
-            msgs[j] = msgs[(j + 2) % 4];                                           \
-            msgs[j] = __builtin_ia32_sha1msg2(msgs[j], msgs[(j + 3) % 4]);         \
-                                                                                   \
-            e = __builtin_ia32_sha1nexte(abcd[(j + 1) % 2], msgs[j]);              \
-            abcd[(j + 1) % 2] = __builtin_ia32_sha1rnds4(abcd[(j + 1) % 2], e, i); \
+#    define group(i_group)                                                                                     \
+        for (int i_pack = 0; i_pack != 5; ++i_pack) {                                                          \
+            int i_msg = i_group * 5 + i_pack;                                                                  \
+            if (i_msg >= 0 && i_msg < 4) {                                                                     \
+                msgs[i_msg] = AK::SIMD::load4u<i32x4>(&data[i_msg * 16]);                                      \
+                msgs[i_msg] = AK::SIMD::byte_reverse(msgs[i_msg]);                                             \
+            } else {                                                                                           \
+                msgs[(i_msg + 0) % 4] = __builtin_ia32_sha1msg1(msgs[(i_msg + 0) % 4], msgs[(i_msg + 1) % 4]); \
+                msgs[(i_msg + 0) % 4] ^= msgs[(i_msg + 2) % 4];                                                \
+                msgs[(i_msg + 0) % 4] = __builtin_ia32_sha1msg2(msgs[(i_msg + 0) % 4], msgs[(i_msg + 3) % 4]); \
+            }                                                                                                  \
+            if (i_msg == 0) {                                                                                  \
+                e += msgs[0];                                                                                  \
+            } else {                                                                                           \
+                e = __builtin_ia32_sha1nexte(abcd[(i_msg + 1) % 2], msgs[(i_msg + 0) % 4]);                    \
+            }                                                                                                  \
+            abcd[(i_msg + 1) % 2] = __builtin_ia32_sha1rnds4(abcd[(i_msg + 0) % 2], e, i_group);               \
         }
 
-    ROUND(0);
-    ROUND(1);
-    ROUND(2);
-    ROUND(3);
-
-    // Finish computation of the last `e' value.
-    msgs[0] = i32x4 { 0, 0, 0, 0 };
-    e = __builtin_ia32_sha1nexte(abcd[1], msgs[0]);
-    // Sum current working registers with saved state from before.
+    auto old_abcd = abcd[0];
+    auto old_e = e;
+    group(0);
+    group(1);
+    group(2);
+    group(3);
+    e = __builtin_ia32_sha1nexte(abcd[1], i32x4 {});
     abcd[0] += old_abcd;
     e += old_e;
-    // Here could end `for' or `while' loop in case we processed more than one block at once.
-    // Save working registers into state.
+
     abcd[0] = AK::SIMD::item_reverse(abcd[0]);
     AK::SIMD::store4u(&state[0], abcd[0]);
     state[4] = e[3];
