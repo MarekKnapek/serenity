@@ -135,8 +135,9 @@ SHA1_ATTRIBUTE_TARGET_X86 static void transform_impl(u32 (&state)[5], u8 const (
 
     abcd[0] = AK::SIMD::item_reverse(abcd[0]);
     AK::SIMD::store4u(&state[0], abcd[0]);
-    state[4] = e[3];
+    state[4] = static_cast<u32>(e[3]);
 }
+
 #endif
 
 inline void SHA1::transform(u8 const (&data)[BlockSize])
