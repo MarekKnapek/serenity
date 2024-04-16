@@ -217,6 +217,32 @@ ALWAYS_INLINE static T byte_reverse_impl(T a, IndexSequence<Idx...>)
             N - 1 - Idx...));
 }
 
+template<SIMDVector T, size_t... Idx>
+ALWAYS_INLINE static T elementwise_byte_reverse_impl(T a, IndexSequence<Idx...>)
+{
+    static_assert(sizeof...(Idx) == vector_length<T>);
+    using Element = ElementOf<T>;
+    if constexpr (sizeof(Element) == 1) {
+        return T {
+            ((Idx), (a))...
+        };
+    } else if constexpr (sizeof(Element) == 2) {
+        return T {
+            static_cast<Element>(__builtin_bswap16(static_cast<u16>(a[Idx])))...
+        };
+    } else if constexpr (sizeof(Element) == 4) {
+        return T {
+            static_cast<Element>(__builtin_bswap32(static_cast<u32>(a[Idx])))...
+        };
+    } else if constexpr (sizeof(Element) == 8) {
+        return T {
+            static_cast<Element>(__builtin_bswap64(static_cast<u64>(a[Idx])))...
+        };
+    } else {
+        __builtin_unreachable();
+    }
+}
+
 }
 
 // FIXME: Shuffles only work with integral types for now
@@ -236,6 +262,12 @@ template<SIMDVector T>
 ALWAYS_INLINE static T byte_reverse(T a)
 {
     return Detail::byte_reverse_impl(a, MakeIndexSequence<sizeof(T)>());
+}
+
+template<SIMDVector T>
+ALWAYS_INLINE static T elementwise_byte_reverse(T a)
+{
+    return Detail::elementwise_byte_reverse_impl(a, MakeIndexSequence<vector_length<T>>());
 }
 
 }
