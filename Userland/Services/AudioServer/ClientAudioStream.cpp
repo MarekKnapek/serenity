@@ -37,10 +37,6 @@ ErrorOr<Audio::Sample, ClientAudioStream::ErrorState> ClientAudioStream::get_nex
     if (m_in_chunk_location >= m_current_audio_chunk.size()) {
         auto result = m_buffer->dequeue();
         if (result.is_error()) {
-            if (result.error() == Audio::AudioQueue::QueueStatus::Empty) {
-                dbgln_if(AUDIO_DEBUG, "Audio client {} can't keep up!", m_client->client_id());
-            }
-
             return ErrorState::ClientUnderrun;
         }
         // FIXME: Our resampler and the way we resample here are bad.
