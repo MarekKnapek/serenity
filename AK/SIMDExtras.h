@@ -206,15 +206,15 @@ ALWAYS_INLINE static T item_reverse_impl(T a, IndexSequence<Idx...>)
 template<SIMDVector T, size_t... Idx>
 ALWAYS_INLINE static T byte_reverse_impl(T a, IndexSequence<Idx...>)
 {
-    static_assert(sizeof(T) == sizeof...(Idx));
+    static_assert(sizeof...(Idx) == sizeof(T));
     constexpr size_t N = sizeof(T);
-    using BytesVector = Conditional<sizeof(T) == 16, u8x16, Conditional<sizeof(T) == 32, u8x32, void>>;
-    static_assert(sizeof(T) == sizeof(BytesVector));
-    return bit_cast<T>(
-        __builtin_shufflevector(
-            bit_cast<BytesVector>(a),
-            bit_cast<BytesVector>(a),
-            N - 1 - Idx...));
+    using BytesVector = Conditional<sizeof(T) == 2, u8x2, Conditional<sizeof(T) == 4, u8x4, Conditional<sizeof(T) == 8, u8x8, Conditional<sizeof(T) == 16, u8x16, Conditional<sizeof(T) == 32, u8x32, void>>>>>;
+    static_assert(sizeof(BytesVector) == sizeof(T));
+    auto tmp = __builtin_shufflevector(
+        *reinterpret_cast<BytesVector*>(&a),
+        *reinterpret_cast<BytesVector*>(&a),
+        N - 1 - Idx...);
+    return *reinterpret_cast<T*>(&tmp);
 }
 
 template<SIMDVector T, size_t... Idx>
