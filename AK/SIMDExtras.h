@@ -116,6 +116,23 @@ ALWAYS_INLINE static void store_unaligned(void* a, VectorType const& v)
     __builtin_memcpy(a, &v, sizeof(VectorType));
 }
 
+template<SIMDVector TDst, SIMDVector TSrc>
+ALWAYS_INLINE static TDst as(TSrc const& v)
+{
+    union aligned_buffer
+    {
+        unsigned char m_buffer[sizeof(v)];
+        TSrc m_src;
+        TDst m_dst;
+    };
+
+    static_assert(sizeof(TDst) == sizeof(TSrc));
+
+    union aligned_buffer buffer {};
+    store_unaligned(&buffer.m_buffer[0], v);
+    return load_unaligned<TDst>(&buffer.m_buffer[0]);
+}
+
 ALWAYS_INLINE static f32x4 load4(float const* a, float const* b, float const* c, float const* d)
 {
     return f32x4 { *a, *b, *c, *d };
