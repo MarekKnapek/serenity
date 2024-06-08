@@ -43,10 +43,8 @@
     E(hmac_sha256, auth, Authentication::HMAC<Crypto::Hash::SHA256>) \
     E(hmac_sha512, auth, Authentication::HMAC<Crypto::Hash::SHA512>) \
     E(poly1305, auth, Authentication::Poly1305)                      \
-    E(ghash, auth, Authentication::GHash)                            \
     E(aes_128_cbc, cipher, Cipher::AESCipher::CBCMode, 128)          \
     E(aes_128_ctr, cipher, Cipher::AESCipher::CTRMode, 128)          \
-    E(aes_128_gcm, cipher, Cipher::AESCipher::GCMMode, 128)          \
     E(aes_256_cbc, cipher, Cipher::AESCipher::CBCMode, 256)          \
     E(aes_256_ctr, cipher, Cipher::AESCipher::CTRMode, 256)          \
     E(chacha20_128, cipher, Cipher::ChaCha20, 128, true)             \
