@@ -92,7 +92,7 @@ __attribute__((target("sha,sse4.2"))) static void transform_impl_sha1(u32 (&stat
     abcd[0] = AK::SIMD::item_reverse(abcd[0]);
     i32x4 e { 0, 0, 0, static_cast<i32>(state[4]) };
 
-    auto group = [&]<int i_group>() {
+    auto group = [&]<int i_group> [[gnu::target("sha")]] () {
         // FIXME: Test if unrolling the loop is worth it
         //          GCC: #pragma GCC unroll(5)
         //        Clang: #pragma unroll
