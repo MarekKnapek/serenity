@@ -6,6 +6,7 @@
 
 #include <AK/ByteReader.h>
 #include <AK/Debug.h>
+#include <AK/Platform.h>
 #include <AK/Types.h>
 #include <LibCrypto/Authentication/GHash.h>
 
@@ -84,10 +85,79 @@ GHash::TagType GHash::process(ReadonlyBytes aad, ReadonlyBytes cipher)
     return digest;
 }
 
+#if (ARCH(I386) || ARCH(X86_64))
+
+#include <wmmintrin.h> /* _mm_clmulepi64_si128 */
+#include <emmintrin.h> /* SSE2 _mm_load_si128 _mm_or_si128 _mm_set_epi8 _mm_slli_epi32 _mm_slli_si128 _mm_srli_epi32 _mm_srli_si128 _mm_store_si128 _mm_xor_si128 */
+#include <tmmintrin.h> /* SSSE3 _mm_shuffle_epi8 */
+
+static void __attribute__((target("pclmul,sse2,ssse3"))) galois_multiply_impl(u32 (&z)[4], u32 const (&x)[4], u32 const (&y)[4])
+{
+    __m128i bswap;
+    __m128i bswapbe;
+    __m128i a;
+    __m128i b;
+    __m128i ta;
+    __m128i tb;
+    __m128i tc;
+    __m128i td;
+    __m128i te;
+    __m128i tf;
+    __m128i tg;
+    __m128i th;
+
+    bswap = _mm_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+    bswapbe = _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3);
+    a = _mm_loadu_si128(((__m128i const*)(x)));
+    b = _mm_loadu_si128(((__m128i const*)(y)));
+    a = _mm_shuffle_epi8(_mm_shuffle_epi8(a, bswapbe), bswap);
+    b = _mm_shuffle_epi8(_mm_shuffle_epi8(b, bswapbe), bswap);
+    ta = _mm_clmulepi64_si128(a, b, 0x00);
+    tb = _mm_clmulepi64_si128(a, b, 0x10);
+    tc = _mm_clmulepi64_si128(a, b, 0x01);
+    td = _mm_clmulepi64_si128(a, b, 0x11);
+    tb = _mm_xor_si128(tb, tc);
+    tc = _mm_slli_si128(tb, 8);
+    tb = _mm_srli_si128(tb, 8);
+    ta = _mm_xor_si128(ta, tc);
+    td = _mm_xor_si128(td, tb);
+    te = _mm_srli_epi32(ta, 31);
+    tf = _mm_srli_epi32(td, 31);
+    ta = _mm_slli_epi32(ta, 1);
+    td = _mm_slli_epi32(td, 1);
+    tg = _mm_srli_si128(te, 12);
+    tf = _mm_slli_si128(tf, 4);
+    te = _mm_slli_si128(te, 4);
+    ta = _mm_or_si128(ta, te);
+    td = _mm_or_si128(td, tf);
+    td = _mm_or_si128(td, tg);
+    te = _mm_slli_epi32(ta, 31);
+    tf = _mm_slli_epi32(ta, 30);
+    tg = _mm_slli_epi32(ta, 25);
+    te = _mm_xor_si128(te, tf);
+    te = _mm_xor_si128(te, tg);
+    tf = _mm_srli_si128(te, 4);
+    te = _mm_slli_si128(te, 12);
+    ta = _mm_xor_si128(ta, te);
+    th = _mm_srli_epi32(ta, 1);
+    tb = _mm_srli_epi32(ta, 2);
+    tc = _mm_srli_epi32(ta, 7);
+    th = _mm_xor_si128(th, tb);
+    th = _mm_xor_si128(th, tc);
+    th = _mm_xor_si128(th, tf);
+    ta = _mm_xor_si128(ta, th);
+    td = _mm_xor_si128(td, ta);
+    td = _mm_shuffle_epi8(_mm_shuffle_epi8(td, bswap), bswapbe);
+    _mm_storeu_si128(((__m128i*)(z)), td);
+}
+
+#else
+
 /// Galois Field multiplication using <x^127 + x^7 + x^2 + x + 1>.
 /// Note that x, y, and z are strictly BE.
-void galois_multiply(u32 (&_z)[4], u32 const (&_x)[4], u32 const (&_y)[4])
+static void galois_multiply_impl(u32 (&_z)[4], u32 const (&_x)[4], u32 const (&_y)[4])
 {
+
     // Note: Copied upfront to stack to avoid memory access in the loop.
     u32 x[4] { _x[0], _x[1], _x[2], _x[3] };
     u32 const y[4] { _y[0], _y[1], _y[2], _y[3] };
@@ -117,6 +187,13 @@ void galois_multiply(u32 (&_z)[4], u32 const (&_x)[4], u32 const (&_y)[4])
     }
 
     memcpy(_z, z, sizeof(z));
+}
+
+#endif
+
+void galois_multiply(u32 (&z)[4], u32 const (&x)[4], u32 const (&y)[4])
+{
+    galois_multiply_impl(z, x, y);
 }
 
 }
